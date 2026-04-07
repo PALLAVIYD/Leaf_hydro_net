@@ -1,0 +1,11 @@
+tensorflow
+tensorflow-datasets
+matplotlib
+seaborn
+numpy
+scikit-learn
+opencv-python
+ultralytics
+streamlit
+Pillow
+importlib_resources

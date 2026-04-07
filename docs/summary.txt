@@ -1,0 +1,607 @@
+===== FILE: Untitled6.ipynb =====
+[CELL type=code]
+# ==========================================================
+# 1️⃣ Install Required Libraries
+# ==========================================================
+!pip install tensorflow tensorflow-datasets matplotlib seaborn scikit-learn -q
+
+# ==========================================================
+# 2️⃣ Import Libraries
+# ==========================================================
+import tensorflow as tf
+import tensorflow_datasets as tfds
+import matplotlib.pyplot as plt
+import seaborn as sns
+import numpy as np
+from sklearn.metrics import confusion_matrix, classification_report
+
+# ==========================================================
+# 3️⃣ Load PlantVillage Dataset (Auto Download)
+# ==========================================================
+(ds_train, ds_test), ds_info = tfds.load(
+    'plant_village',
+    split=['train[:80%]', 'train[80%:]'],
+    as_supervised=True,
+    with_info=True
+)
+
+NUM_CLASSES = ds_info.features['label'].num_classes
+IMG_SIZE = 128
+BATCH_SIZE = 32
+
+print("Number of Classes:", NUM_CLASSES)
+
+# ==========================================================
+# 4️⃣ Preprocess Dataset
+# ==========================================================
+def preprocess(image, label):
+    image = tf.image.resize(image, (IMG_SIZE, IMG_SIZE))
+    image = image / 255.0
+    return image, label
+
+ds_train = ds_train.map(preprocess).shuffle(1000).batch(BATCH_SIZE).prefetch(tf.data.AUTOTUNE)
+ds_test = ds_test.map(preprocess).batch(BATCH_SIZE).prefetch(tf.data.AUTOTUNE)
+
+# ==========================================================
+# 5️⃣ Build CNN Model
+# ==========================================================
+model = tf.keras.Sequential([
+    tf.keras.layers.Conv2D(32, (3,3), activation='relu', input_shape=(IMG_SIZE, IMG_SIZE, 3)),
+    tf.keras.layers.MaxPooling2D(),
+    tf.keras.layers.Conv2D(64, (3,3), activation='relu'),
+    tf.keras.layers.MaxPooling2D(),
+    tf.keras.layers.Conv2D(128, (3,3), activation='relu'),
+    tf.keras.layers.MaxPooling2D(),
+    tf.keras.layers.Flatten(),
+    tf.keras.layers.Dense(256, activation='relu'),
+    tf.keras.layers.Dense(NUM_CLASSES, activation='softmax')
+])
+
+model.compile(
+    optimizer='adam',
+    loss='sparse_categorical_crossentropy',
+    metrics=['accuracy']
+)
+
+model.summary()
+
+# ==========================================================
+# 6️⃣ Train Model
+# ==========================================================
+history = model.fit(ds_train, validation_data=ds_test, epochs=5)
+
+# ==========================================================
+# 7️⃣ Evaluate Model
+# ==========================================================
+test_loss, test_acc = model.evaluate(ds_test)
+print("\nTest Accuracy:", round(test_acc*100,2), "%")
+
+# ==========================================================
+# 8️⃣ Show Sample Predictions
+# ==========================================================
+class_names = ds_info.features['label'].names
+
+for images, labels in ds_test.take(1):
+    predictions = model.predict(images)
+    preds = np.argmax(predictions, axis=1)
+
+plt.figure(figsize=(12,6))
+for i in range(6):
+    plt.subplot(2,3,i+1)
+    plt.imshow(images[i])
+    plt.title(f"True: {class_names[int(labels[i])]}\nPred: {class_names[int(preds[i])]}")
+    plt.axis("off")
+plt.show()
+
+# ==========================================================
+# 9️⃣ Confusion Matrix
+# ==========================================================
+y_true = []
+y_pred = []
+
+for images, labels in ds_test:
+    preds = model.predict(images)
+    preds = np.argmax(preds, axis=1)
+    y_true.extend(labels.numpy())
+    y_pred.extend(preds)
+
+cm = confusion_matrix(y_true, y_pred)
+
+plt.figure(figsize=(8,6))
+sns.heatmap(cm, cmap="Blues")
+plt.title("Confusion Matrix")
+plt.xlabel("Predicted")
+plt.ylabel("True")
+plt.show()
+
+# ==========================================================
+# 🔟 Training Curve
+# ==========================================================
+plt.figure(figsize=(8,4))
+plt.plot(history.history['accuracy'], label='Train Accuracy')
+plt.plot(history.history['val_accuracy'], label='Validation Accuracy')
+plt.legend()
+plt.title("Training Curve")
+plt.xlabel("Epoch")
+plt.ylabel("Accuracy")
+plt.show()
+
+[CELL type=code]
+!pip install opencv-python scikit-image tensorflow matplotlib seaborn pandas -q
+
+[CELL type=code]
+import cv2
+import numpy as np
+import matplotlib.pyplot as plt
+import pandas as pd
+from skimage.morphology import skeletonize
+from google.colab import files
+
+[CELL type=code]
+!unzip Plant_leaf_diseases_dataset_without_augmentation.zip
+
+[CELL type=code]
+import os
+print(os.listdir())
+
+[CELL type=code]
+!rm Plant_leaf_diseases_dataset_without_augmentation.zip
+
+[CELL type=code]
+!pip install tensorflow tensorflow-datasets -q
+
+[CELL type=code]
+import tensorflow as tf
+import tensorflow_datasets as tfds
+import matplotlib.pyplot as plt
+
+[CELL type=code]
+(ds_train, ds_test), ds_info = tfds.load(
+    'plant_village',
+    split=['train[:80%]', 'train[80%:]'],
+    as_supervised=True,
+    with_info=True
+)
+
+[CELL type=code]
+print("Number of Classes:", ds_info.features['label'].num_classes)
+print("Class Names:", ds_info.features['label'].names[:10])
+
+[CELL type=code]
+plt.figure(figsize=(10,6))
+
+for i,(image,label) in enumerate(ds_train.take(6)):
+    plt.subplot(2,3,i+1)
+    plt.imshow(image)
+    plt.title(ds_info.features['label'].names[label])
+    plt.axis("off")
+
+plt.show()
+
+[CELL type=code]
+IMG_SIZE = 128
+
+def preprocess(image, label):
+    image = tf.image.resize(image,(IMG_SIZE,IMG_SIZE))
+    image = image/255.0
+    return image,label
+
+ds_train = ds_train.map(preprocess)
+ds_test = ds_test.map(preprocess)
+
+[CELL type=code]
+images = []
+labels = []
+
+for img,label in ds_train.take(50):
+    images.append(img.numpy())
+    labels.append(label.numpy())
+
+print("Images Loaded:",len(images))
+
+[CELL type=code]
+import cv2
+import numpy as np
+
+img = (images[0]*255).astype(np.uint8)
+
+edges = cv2.Canny(img,50,150)
+
+plt.imshow(edges,cmap="gray")
+plt.title("Leaf Edge Detection")
+plt.axis("off")
+
+[CELL type=code]
+import cv2
+import numpy as np
+import matplotlib.pyplot as plt
+
+img = (images[0]*255).astype(np.uint8)
+
+plt.imshow(img)
+plt.title("Original Leaf")
+plt.axis("off")
+
+[CELL type=code]
+hsv = cv2.cvtColor(img, cv2.COLOR_RGB2HSV)
+
+lower_green = np.array([25,40,40])
+upper_green = np.array([90,255,255])
+
+mask = cv2.inRange(hsv, lower_green, upper_green)
+
+plt.imshow(mask, cmap="gray")
+plt.title("Leaf Mask")
+plt.axis("off")
+
+[CELL type=code]
+contours,_ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+largest = max(contours, key=cv2.contourArea)
+
+leaf_mask = np.zeros_like(mask)
+cv2.drawContours(leaf_mask,[largest],-1,255,-1)
+
+plt.imshow(leaf_mask,cmap="gray")
+plt.title("Segmented Leaf")
+plt.axis("off")
+
+[CELL type=code]
+x_coords = largest[:,:,0]
+
+current_width = x_coords.max() - x_coords.min()
+
+print("Current Width:", current_width)
+
+[CELL type=code]
+baseline_width = 200
+
+LRI = (baseline_width - current_width)/baseline_width
+
+print("Leaf Rolling Index:", round(LRI,3))
+
+[CELL type=code]
+if LRI < 0.1:
+    stage = "Healthy"
+
+elif LRI < 0.3:
+    stage = "Early Drought"
+
+elif LRI < 0.5:
+    stage = "Moderate Stress"
+
+else:
+    stage = "Severe Drought"
+
+print("Predicted Stage:", stage)
+
+[CELL type=code]
+plt.figure(figsize=(6,6))
+
+cv2.drawContours(img,[largest],-1,(255,0,0),3)
+
+plt.imshow(img)
+plt.title(f"LRI: {round(LRI,2)} | {stage}")
+plt.axis("off")
+
+[CELL type=code]
+results = []
+
+for image in images[:20]:
+
+    img = (image*255).astype(np.uint8)
+
+    hsv = cv2.cvtColor(img, cv2.COLOR_RGB2HSV)
+    mask = cv2.inRange(hsv, lower_green, upper_green)
+
+    contours,_ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    if len(contours)==0:
+        continue
+
+    largest = max(contours,key=cv2.contourArea)
+
+    x = largest[:,:,0]
+    width = x.max()-x.min()
+
+    LRI = (200-width)/200
+
+    results.append(LRI)
+
+print("Average LRI:", np.mean(results))
+
+[CELL type=code]
+results = []
+
+for image in images[:20]:
+
+    img = (image*255).astype(np.uint8)
+
+    hsv = cv2.cvtColor(img, cv2.COLOR_RGB2HSV)
+    mask = cv2.inRange(hsv, lower_green, upper_green)
+
+    contours,_ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    if len(contours)==0:
+        continue
+
+    largest = max(contours,key=cv2.contourArea)
+
+    x = largest[:,:,0]
+    width = x.max()-x.min()
+
+    LRI = (200-width)/200
+
+    results.append(LRI)
+
+print("Average LRI:", np.mean(results))
+
+[CELL type=code]
+import tensorflow_datasets as tfds
+
+(ds_train, ds_test), ds_info = tfds.load(
+    'plant_village',
+    split=['train[:10%]', 'train[10%:12%]'],
+    as_supervised=True,
+    with_info=True
+)
+
+print("Classes:", ds_info.features['label'].num_classes)
+
+[CELL type=code]
+!wget https://github.com/spMohanty/PlantVillage-Dataset/raw/master/raw/color/Tomato___healthy/0a0d6a11.jpg
+!wget https://github.com/spMohanty/PlantVillage-Dataset/raw/master/raw/color/Tomato___healthy/0a4c5c2a.jpg
+!wget https://github.com/spMohanty/PlantVillage-Dataset/raw/master/raw/color/Tomato___healthy/0a7f1f61.jpg
+!wget https://github.com/spMohanty/PlantVillage-Dataset/raw/master/raw/color/Tomato___healthy/0abfcd0d.jpg
+
+[CELL type=code]
+
+
+
+===== FILE: Untitled7.ipynb =====
+[CELL type=code]
+!pip install pyspark torch torch-geometric networkx pandas scikit-learn stable-baselines3 gymnasium shimmy plotly ipywidgets
+
+[CELL type=code]
+import networkx as nx
+import pandas as pd
+import numpy as np
+import random
+import matplotlib.pyplot as plt
+import plotly.express as px
+import time
+
+from IPython.display import clear_output
+
+import torch
+import torch.nn.functional as F
+from torch_geometric.data import Data
+from torch_geometric.nn import GCNConv
+
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import LabelEncoder
+
+import gymnasium as gym
+from gymnasium import spaces
+from stable_baselines3 import PPO
+
+[CELL type=code]
+from pyspark.sql import SparkSession
+
+spark = SparkSession.builder \
+    .appName("SelfHealingPipeline") \
+    .getOrCreate()
+
+[CELL type=code]
+data = [
+(1,"US",100),
+(2,"IN",200),
+(3,"IN",150),
+(4,"UK",300),
+(5,"US",250),
+(6,"IN",120)
+]
+
+columns = ["user_id","country","revenue"]
+
+spark_df = spark.createDataFrame(data,columns)
+spark_df.show()
+
+[CELL type=code]
+def extract():
+    return spark_df
+
+def load_raw(df):
+    df.createOrReplaceTempView("raw_table")
+    return df
+
+def validate(df):
+    if df.count() == 0:
+        raise Exception("Validation failed")
+    return df
+
+def transform():
+    return spark.sql("""
+    SELECT *, revenue*1.0 AS revenue_usd FROM raw_table
+    """)
+
+def aggregate(df):
+    return df.groupBy("country").sum("revenue_usd")
+
+def load_warehouse(df):
+    df.show()
+    return df
+
+[CELL type=code]
+pipeline_dag = nx.DiGraph()
+
+pipeline_dag.add_edges_from([
+("extract","load_raw"),
+("load_raw","validate"),
+("validate","transform"),
+("transform","aggregate"),
+("aggregate","load_warehouse")
+])
+
+[CELL type=code]
+task_map = {
+"extract": extract,
+"load_raw": load_raw,
+"validate": validate,
+"transform": transform,
+"aggregate": aggregate,
+"load_warehouse": load_warehouse
+}
+
+[CELL type=code]
+logs = []
+
+for i in range(2000):
+    logs.append([
+        random.randint(0,5),
+        random.randint(1,20),
+        random.random(),
+        random.random(),
+        random.choice([0,1])
+    ])
+
+df_logs = pd.DataFrame(logs,columns=["task","duration","cpu","memory","fail"])
+
+[CELL type=code]
+X = df_logs[["task","duration","cpu","memory"]]
+y = df_logs["fail"]
+
+model = RandomForestClassifier()
+model.fit(X,y)
+
+[CELL type=code]
+mapping = {node:i for i,node in enumerate(pipeline_dag.nodes())}
+
+edge_list = [[mapping[a],mapping[b]] for a,b in pipeline_dag.edges()]
+edge_index = torch.tensor(edge_list).t()
+
+x = torch.rand((len(mapping),4))
+
+data_gnn = Data(x=x,edge_index=edge_index)
+
+[CELL type=code]
+class GNN(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.conv1 = GCNConv(4,16)
+        self.conv2 = GCNConv(16,2)
+
+    def forward(self,x,edge_index):
+        x = self.conv1(x,edge_index)
+        x = F.relu(x)
+        x = self.conv2(x,edge_index)
+        return x
+
+gnn = GNN()
+
+[CELL type=code]
+labels = torch.randint(0,2,(len(mapping),))
+
+opt = torch.optim.Adam(gnn.parameters(),lr=0.01)
+
+for _ in range(200):
+    opt.zero_grad()
+    out = gnn(data_gnn.x,data_gnn.edge_index)
+    loss = F.cross_entropy(out,labels)
+    loss.backward()
+    opt.step()
+
+[CELL type=code]
+class PipelineEnv(gym.Env):
+
+    def __init__(self):
+        super().__init__()
+        self.action_space = spaces.Discrete(4)
+        self.observation_space = spaces.Box(0,1,(5,),dtype=np.float32)
+
+    def reset(self,seed=None,options=None):
+        return np.random.rand(5).astype(np.float32),{}
+
+    def step(self,action):
+        reward = random.random()
+        return np.random.rand(5),reward,False,False,{}
+
+env = PipelineEnv()
+rl = PPO("MlpPolicy",env,verbose=0)
+rl.learn(5000)
+
+[CELL type=code]
+def show_dag(status):
+
+    clear_output(wait=True)
+
+    colors = []
+    for node in pipeline_dag.nodes():
+        if status[node]=="pending":
+            colors.append("blue")
+        elif status[node]=="running":
+            colors.append("yellow")
+        elif status[node]=="success":
+            colors.append("green")
+        else:
+            colors.append("red")
+
+    plt.figure(figsize=(6,4))
+    nx.draw(pipeline_dag,with_labels=True,node_color=colors,node_size=3000)
+    plt.show()
+    time.sleep(1)
+
+[CELL type=code]
+def run_pipeline():
+
+    status = {n:"pending" for n in pipeline_dag.nodes()}
+    data = None
+
+    order = list(nx.topological_sort(pipeline_dag))
+
+    for task in order:
+
+        status[task] = "running"
+        show_dag(status)
+
+        try:
+
+            sample = [[random.randint(0,5),10,0.5,0.5]]
+
+            if model.predict(sample)[0] == 1:
+
+                print("⚠️ Failure predicted")
+
+                out = gnn(data_gnn.x,data_gnn.edge_index)
+                root = list(mapping.keys())[out[:,1].argmax().item()]
+
+                print("Root cause:",root)
+
+                action = int(rl.predict(np.random.rand(5))[0])
+
+                print("Healing:",["Retry","Reroute","Scale","Skip"][action])
+
+            func = task_map[task]
+
+            if task == "extract":
+                data = func()
+            elif task == "transform":
+                data = func()
+            else:
+                data = func(data)
+
+            status[task] = "success"
+
+        except:
+            status[task] = "failed"
+            break
+
+        show_dag(status)
+
+    return data
+
+[CELL type=code]
+
+
+
